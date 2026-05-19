@@ -107,7 +107,7 @@ export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, 
                 { key: 'vampire', label: '🧛 Vampir', color: 'var(--accent2)' },
                 { key: 'doctor', label: '💉 Doktor', color: '#4488cc' },
               ].map(r => (
-                <div key={r.key} style={{ display: 'flex', alignItems: 'center', justify-content: 'space-between', marginBottom: 16 }}>
+                <div key={r.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <span style={{ color: r.color, fontSize: 17 }}>{r.label}</span>
                   <div className="stepper">
                     <button className="step-btn" onClick={() => updateRole(r.key, -1)}>−</button>

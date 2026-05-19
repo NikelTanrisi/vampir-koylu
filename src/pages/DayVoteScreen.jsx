@@ -12,20 +12,21 @@ export default function DayVoteScreen({ db, roomId, playerId, gameState, myRole 
   const votes = gameState?.votes || {}
   const myVote = votes[playerId]
   const totalVoted = Object.keys(votes).length
-  const aliveCount = alivePlayers.filter(p => p.id !== playerId).length + (isDead ? 0 : 0)
 
-  // Show vote tally (counts only, not who voted for who)
+  // Sadece yaşayan oyuncular oy kullanabilir!
+  const aliveVoters = alivePlayers.length
+
+  // Oy sayım tablosu
   const voteCounts = {}
   Object.values(votes).forEach(tid => {
     voteCounts[tid] = (voteCounts[tid] || 0) + 1
   })
 
   const canVote = !isDead && !myVote
-  const aliveVoters = alivePlayers.length
 
-  // Auto-resolve when everyone voted
+  // Herkes oy verdiğinde otomatik olarak sonuçlandır
   useEffect(() => {
-    if (totalVoted < aliveVoters) return
+    if (aliveVoters === 0 || totalVoted < aliveVoters) return
     resolveVote()
   }, [totalVoted, aliveVoters])
 
@@ -35,24 +36,31 @@ export default function DayVoteScreen({ db, roomId, playerId, gameState, myRole 
   }
 
   const resolveVote = async () => {
+    // Çift tetiklenmeyi önlemek için admin kontrolü veya bayrak mekanizması
+    if (gameState?.resolvingVote) return
+    await update(ref(db, `rooms/${roomId}`), { resolvingVote: true })
+
     const winner = tallyVotes(votes)
-    let updates = { votes: null, chatMessages: null }
+    let updates = { votes: null, chatMessages: null, personalMessages: null, resolvingVote: null }
 
     if (winner === 'tie' || !winner) {
-      // Eşitlik → gece
+      // Eşitlik durumunda doğrudan geceye geçiş
       updates.phase = 'night'
       updates.nightActions = null
       updates.nightTimer = Date.now() + 10000
-      updates.gameLog = [...(gameState.gameLog || []), `Tur ${gameState.round}: Eşitlik — gece oluyor`]
+      updates.gameLog = [...(gameState.gameLog || []), `Tur ${gameState.round}: Eşitlik sağlandı — köy meydanında kimse asılmadı. Gece oluyor...`]
     } else {
-      // Kazanan asılıyor
+      // Kazanan oyuncu asılıyor
       const hangedPlayer = players.find(p => p.id === winner)
+      
+      // Oyuncuyu Firebase'de GERÇEKTEN öldür
       await update(ref(db, `rooms/${roomId}/players/${winner}`), { dead: true })
 
-      // Güncel players ile kazanma kontrolü
       const updatedPlayers = players.map(p => p.id === winner ? { ...p, dead: true } : p)
       const win = checkWinCondition(updatedPlayers, gameState.roles || {})
-      updates.gameLog = [...(gameState.gameLog || []), `Tur ${gameState.round}: ${hangedPlayer?.name} asıldı (${gameState.roles?.[winner]})`]
+      
+      const roleText = gameState.roles?.[winner] === 'vampire' ? '🧛 Vampir' : '🧑‍🌾 Köylü'
+      updates.gameLog = [...(gameState.gameLog || []), `Tur ${gameState.round}: Köy halkı ${hangedPlayer?.name} isimli oyuncuyu astı! Rolü: ${roleText}`]
 
       if (win) {
         updates.phase = 'game_over'
@@ -72,15 +80,15 @@ export default function DayVoteScreen({ db, roomId, playerId, gameState, myRole 
     <div className="screen">
       <div className="top-bar">
         <span className="game-title">☀️ Oylama</span>
-        <span className="phase-badge">KİMİ ASALım?</span>
+        <span className="phase-badge" style={{ background: 'var(--accent2)' }}>KİMİ ASALIM?</span>
         <span />
       </div>
       <div className="screen-inner">
         <p style={{ color: 'var(--text2)', fontStyle: 'italic', marginBottom: 16, textAlign: 'center', fontSize: 15 }}>
-          Kimi asmak istiyorsun? ({totalVoted}/{aliveVoters} oy kullandı)
+          Kimi asmak istiyorsun? ({totalVoted}/{aliveVoters} oy kullanıldı)
         </p>
 
-        {isDead && <div className="info-bar">Öldün — sadece izleyebilirsin 👻</div>}
+        {isDead && <div className="info-bar" style={{ background: 'rgba(230, 57, 70, 0.15)', color: 'var(--accent2)' }}>👻 Ölüler oy kullanamaz. Köy halkının kararını izliyorsun...</div>}
 
         {alivePlayers.map(p => {
           if (p.id === playerId) return null // Kendine oy veremez
@@ -98,7 +106,7 @@ export default function DayVoteScreen({ db, roomId, playerId, gameState, myRole 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {count > 0 && (
                   <span style={{
-                    background: 'var(--accent)',
+                    background: 'var(--accent2)',
                     color: '#fff',
                     borderRadius: '50%',
                     width: 26, height: 26,
@@ -116,7 +124,7 @@ export default function DayVoteScreen({ db, roomId, playerId, gameState, myRole 
 
         {myVote && !isDead && (
           <div className="info-bar" style={{ marginTop: 12 }}>
-            Oy kullandın. Sonuç bekleniyor...
+            ✓ Oyunuzu kullandınız. Diğer köylülerin kararları bekleniyor...
           </div>
         )}
       </div>

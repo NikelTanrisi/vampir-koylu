@@ -16,9 +16,6 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
   const myPlayer = players.find(p => p.id === playerId)
   const isDead = myPlayer?.dead
 
-  const aliveVampires = alivePlayers.filter(p => (gameState?.roles || {})[p.id] === 'vampire')
-  const aliveVillagers = alivePlayers.filter(p => (gameState?.roles || {})[p.id] !== 'vampire')
-
   // Timer
   useEffect(() => {
     const tick = setInterval(() => {
@@ -42,9 +39,15 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
   }
 
   const resolveNight = async () => {
-    // Only resolve once (admin does it, or first to trigger)
+    // Sadece admin veya ilk tetikleyen çözer
+    if (gameState?.resolvingNight) return;
+    
+    // Çift tetiklemeyi önlemek için bayrak koy
+    await update(ref(db, `rooms/${roomId}`), { resolvingNight: true });
+
     const actions = gameState?.nightActions || {}
-    // Collect vampire kills
+    
+    // Vampir kurbanlarını ve Doktor korumalarını topla
     const vampireKills = Object.entries(actions)
       .filter(([k]) => k.startsWith('vampire_'))
       .map(([, v]) => v)
@@ -53,123 +56,75 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
       .filter(([k]) => k.startsWith('doctor_'))
       .map(([, v]) => v)
 
-    // Most targeted by vampires (simple: first kill, unless doctor saved)
+    // En çok oyu alan (veya ilk seçilen) hedef
     const killTarget = vampireKills[0] || null
     const wasSaved = killTarget && doctorSaves.includes(killTarget)
 
     let killed = null
+    let updates = {} // Firebase güncellemelerini toplayacağımız obje
+
     if (killTarget && !wasSaved) {
       killed = killTarget
-      await update(ref(db, `rooms/${roomId}/players/${killed}`), { dead: true })
+      // Oyuncuyu GERÇEKTEN öldürüyoruz
+      updates[`rooms/${roomId}/players/${killed}/dead`] = true
     }
 
     const updatedPlayers = players.map(p =>
       p.id === killed ? { ...p, dead: true } : p
     )
+    
     const win = checkWinCondition(updatedPlayers, gameState.roles || {})
+    
+    // Genel log kaydı
     const logEntry = killed
-      ? `Gece ${gameState.round}: ${players.find(p => p.id === killed)?.name} öldürüldü`
-      : `Gece ${gameState.round}: Kimse ölmedi${wasSaved ? ' (doktor kurtardı)' : ''}`
+      ? `Gece ${gameState.round}: ${players.find(p => p.id === killed)?.name} öldürüldü.`
+      : `Gece ${gameState.round}: Kimse ölmedi.`
 
-    await update(ref(db, `rooms/${roomId}`), {
-      phase: win ? 'game_over' : 'day_chat',
-      winner: win || null,
-      nightActions: null,
-      nightTimer: null,
-      chatMessages: null,
-      sleepVotes: null,
-      voteDecisionVotes: null,
-      votes: null,
-      round: win ? gameState.round : (gameState.round || 1) + 1,
-      gameLog: [...(gameState.gameLog || []), logEntry],
-      lastNightResult: { killed, wasSaved }
-    })
-  }
+    // Sabah mesajlarını hazırlıyoruz
+    let personalMessages = {}
 
-  // Role-based instructions
-  const getInstruction = () => {
-    if (isDead) return null
-    if (myRole === 'vampire') return { text: 'Öldürmek istediğin oyuncuyu seç', color: 'var(--accent2)', icon: '🧛' }
-    if (myRole === 'doctor') return { text: 'Korumak istediğin oyuncuyu seç', color: '#4488cc', icon: '💉' }
-    return null
-  }
+    // 1. Hedef alınan kişi için:
+    if (killTarget) {
+      if (!wasSaved) {
+        personalMessages[killTarget] = "Bu gece saldırıya uğradın ve öldün."
+      } else {
+        personalMessages[killTarget] = "Bu gece saldırıya uğradın ama ölmedin, korundun."
+      }
+    }
 
-  const instruction = getInstruction()
+    // 2. Doktor(lar) için:
+    Object.entries(actions).forEach(([key, target]) => {
+      if (key.startsWith('doctor_')) {
+        const docId = key.split('_')[1];
+        if (target === killTarget && wasSaved) {
+          personalMessages[docId] = "Başarılı şekilde saldırganı savuşturdun!"
+        }
+      }
+    });
 
-  return (
-    <div className="screen">
-      <div className="top-bar">
-        <span className="game-title">🌙 Gece {gameState?.round || 1}</span>
-        <div className="timer-circle" style={{ width: 40, height: 40, fontSize: 16, margin: 0 }}>
-          {timeLeft}
-        </div>
-        <span />
-      </div>
-      <div className="screen-inner">
-        <div className="night-overlay" style={{ flex: 'none', borderRadius: 14, marginBottom: 16, padding: '24px 18px' }}>
-          <div className="moon">🌙</div>
-          <p style={{ color: 'var(--text3)', fontStyle: 'italic', marginTop: 12 }}>
-            Köy uyuyor...
-          </p>
-          <div style={{
-            marginTop: 16,
-            background: 'rgba(0,0,0,0.4)',
-            borderRadius: 40,
-            padding: '8px 20px'
-          }}>
-            <span style={{
-              fontFamily: 'Cinzel',
-              fontSize: 26,
-              fontWeight: 700,
-              color: timeLeft <= 3 ? 'var(--accent2)' : 'var(--gold)'
-            }}>{timeLeft}s</span>
-          </div>
-        </div>
+    // 3. Vampir(ler) için:
+    Object.entries(actions).forEach(([key, target]) => {
+      if (key.startsWith('vampire_')) {
+        const vampId = key.split('_')[1];
+        if (target === killTarget) {
+          if (!wasSaved) {
+            personalMessages[vampId] = "Tebrikler, avını avladın."
+          } else {
+            personalMessages[vampId] = "Maalesef doktor hedefini korudu."
+          }
+        }
+      }
+    });
 
-        {!isActive || isDead ? (
-          <div className="night-waiting">
-            {isDead ? '👻 Sen ölüsün. Geceyi izliyorsun...' : '😴 Uyuyorsun. Aktif roller harekete geçiyor...'}
-          </div>
-        ) : done ? (
-          <div className="info-bar">
-            ✓ Seçimini yaptın. Diğerleri bekleniyor...
-          </div>
-        ) : (
-          <>
-            {instruction && (
-              <div style={{
-                padding: '12px 16px',
-                background: 'var(--bg2)',
-                border: `1px solid ${instruction.color}44`,
-                borderRadius: 'var(--rad2)',
-                marginBottom: 14,
-                textAlign: 'center'
-              }}>
-                <span style={{ color: instruction.color }}>
-                  {instruction.icon} {instruction.text}
-                </span>
-              </div>
-            )}
-
-            {alivePlayers
-              .filter(p => myRole === 'vampire' ? (gameState?.roles || {})[p.id] !== 'vampire' : true)
-              .filter(p => p.id !== playerId || myRole === 'doctor') // doctor can save self
-              .map(p => (
-                <div
-                  key={p.id}
-                  className={`player-item ${selected === p.id ? 'selected' : ''}`}
-                  onClick={() => submitAction(p.id)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="player-avatar">{p.name[0].toUpperCase()}</div>
-                  <span className="player-name">{p.name}</span>
-                  {selected === p.id && <span style={{ color: 'var(--accent2)' }}>✓</span>}
-                </div>
-              ))
-            }
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
+    // Tüm güncellemeleri Firebase'e tek seferde yolluyoruz
+    updates[`rooms/${roomId}/phase`] = win ? 'game_over' : 'day_chat'
+    updates[`rooms/${roomId}/winner`] = win || null
+    updates[`rooms/${roomId}/nightActions`] = null
+    updates[`rooms/${roomId}/nightTimer`] = null
+    updates[`rooms/${roomId}/chatMessages`] = null
+    updates[`rooms/${roomId}/sleepVotes`] = null
+    updates[`rooms/${roomId}/voteDecisionVotes`] = null
+    updates[`rooms/${roomId}/votes`] = null
+    updates[`rooms/${roomId}/round`] = win ? gameState.round : (gameState.round || 1) + 1
+    updates[`rooms/${roomId}/gameLog`] = [...(gameState.gameLog || []), logEntry]
+    updates[`rooms/${roomId}/lastNightResult`] = { killed, wasSaved

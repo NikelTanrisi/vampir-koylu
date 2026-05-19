@@ -1,6 +1,6 @@
 // src/pages/LobbyScreen.jsx
 import React, { useState } from 'react'
-import { ref, update, set } from 'firebase/database'
+import { ref, update } from 'firebase/database'
 import { assignRoles } from '../utils/gameLogic'
 
 export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, onLeave }) {
@@ -33,13 +33,29 @@ export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, 
     update(ref(db, `rooms/${roomId}/roleConfig`), { [role]: next })
   }
 
+  // 🤖 TEST MODU: 4 TANE YAPAY ZEKA OYUNCUSU ENJEKTE EDER
+  const addTestBots = async () => {
+    const botPlayers = {
+      bot_1: { id: 'bot_1', name: '🤖 Bot Ahmet', left: false, dead: false },
+      bot_2: { id: 'bot_2', name: '🤖 Bot Ayşe', left: false, dead: false },
+      bot_3: { id: 'bot_3', name: '🤖 Bot Mehmet', left: false, dead: false },
+      bot_4: { id: 'bot_4', name: '🤖 Bot Elif', left: false, dead: false }
+    }
+
+    await update(ref(db, `rooms/${roomId}`), {
+      players: { ...gameState.players, ...botPlayers },
+      roleConfig: { vampire: 1, doctor: 1 }, // 5 kişilik ideal lobi ayarı
+      isTestMode: true // Diğer ekranların botları tanıması için test bayrağı
+    })
+  }
+
   const startGame = async () => {
     const roles = assignRoles(players, roleConfig)
     await update(ref(db, `rooms/${roomId}`), {
       roles,
       phase: 'role_reveal',
       round: 1,
-      log: []
+      gameLog: []
     })
   }
 
@@ -76,7 +92,7 @@ export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, 
 
         {players.length < 3 && (
           <p style={{ color: 'var(--text3)', fontSize: 14, fontStyle: 'italic', textAlign: 'center', margin: '8px 0 14px' }}>
-            En az 3 oyuncu gerekli
+            En az 3 oyuncu gerekli (veya bot ekle)
           </p>
         )}
 
@@ -91,7 +107,7 @@ export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, 
                 { key: 'vampire', label: '🧛 Vampir', color: 'var(--accent2)' },
                 { key: 'doctor', label: '💉 Doktor', color: '#4488cc' },
               ].map(r => (
-                <div key={r.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div key={r.key} style={{ display: 'flex', alignItems: 'center', justify-content: 'space-between', marginBottom: 16 }}>
                   <span style={{ color: r.color, fontSize: 17 }}>{r.label}</span>
                   <div className="stepper">
                     <button className="step-btn" onClick={() => updateRole(r.key, -1)}>−</button>
@@ -108,14 +124,24 @@ export default function LobbyScreen({ db, roomId, playerId, isAdmin, gameState, 
               )}
             </div>
 
-            <button
-              className="btn btn-primary"
-              onClick={startGame}
-              disabled={!canStart}
-              style={{ marginTop: 8 }}
-            >
-              Oyunu Başlat 🧛
-            </button>
+            {/* 🤖 TEST PANEL BUTONLARI */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button
+                className="btn btn-gold"
+                onClick={addTestBots}
+                style={{ flex: 1, padding: '12px', fontSize: 14 }}
+              >
+                🤖 Botları Ekle
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={startGame}
+                disabled={!canStart}
+                style={{ flex: 1, padding: '12px', fontSize: 14 }}
+              >
+                Oyunu Başlat 🧛
+              </button>
+            </div>
           </>
         )}
 

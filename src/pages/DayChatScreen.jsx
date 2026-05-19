@@ -5,6 +5,7 @@ import { ROLE_LABELS } from '../utils/gameLogic'
 
 export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmin, gameState, myRole, onLeave }) {
   const [msg, setMsg] = useState('')
+  const [showDeathAnimation, setShowDeathAnimation] = useState(false)
   const chatEnd = useRef(null)
 
   const players = Object.values(gameState?.players || {}).filter(p => !p.left)
@@ -17,9 +18,26 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
   // Gece hesaplanan kişiye özel bildirim mesajı
   const myPersonalMessage = gameState?.personalMessages?.[playerId] || null
 
+  // 🚨 SINEMATİK ÖLÜM ANİMASYONU TETİKLEYİCİ 🚨
+  useEffect(() => {
+    if (isDead) {
+      // Oyuncu bu tur elendiyse ve animasyonu henüz görmediyse tetikle
+      const hasWatched = sessionStorage.getItem(`vampir_death_watched_r${gameState?.round}`)
+      if (!hasWatched) {
+        setShowDeathAnimation(true)
+      }
+    }
+  }, [isDead, gameState?.round])
+
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
+
+  const closeDeathAnimation = () => {
+    // Animasyonu bu tur için bir daha göstermemek üzere kaydet ve kapat
+    sessionStorage.setItem(`vampir_death_watched_r${gameState?.round}`, 'true')
+    setShowDeathAnimation(false)
+  }
 
   const sendMsg = async () => {
     if (!msg.trim() || isDead) return
@@ -39,7 +57,7 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
   }
 
   const voteSleep = async () => {
-    if (isDead) return // Ölüler uyuma oyu veremez
+    if (isDead) return
     await update(ref(db, `rooms/${roomId}/sleepVotes`), { [playerId]: 'sleep' })
     
     const newVotes = { ...sleepVotes, [playerId]: 'sleep' }
@@ -49,7 +67,7 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
   }
 
   const voteDecision = async () => {
-    if (isDead) return // Ölüler oylama fazına geçişi tetikleyemez
+    if (isDead) return
     await update(ref(db, `rooms/${roomId}`), {
       phase: 'day_vote_decision',
       sleepVotes: null,
@@ -70,6 +88,27 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
   const sleepCount = Object.keys(sleepVotes).length
   const round = gameState?.round || 1
 
+  // 🚨 TAM EKRAN SİNEMATİK ÖLÜM SİSİ 🚨
+  if (showDeathAnimation) {
+    return (
+      <div className="death-overlay-screen">
+        {/* Farklı sürelerde aşağıdan yukarı uçuşan hayaletler */}
+        <div className="ghost-particle" style={{ left: '10%', animationDelay: '0s', animationDuration: '5s' }}>👻</div>
+        <div className="ghost-particle" style={{ left: '40%', animationDelay: '1.8s', animationDuration: '6s' }}>👻</div>
+        <div className="ghost-particle" style={{ left: '70%', animationDelay: '0.5s', animationDuration: '5.5s' }}>👻</div>
+        <div className="ghost-particle" style={{ left: '85%', animationDelay: '2.5s', animationDuration: '4.8s' }}>👻</div>
+
+        <h1 className="death-title">KATLEDİLDİN</h1>
+        <p className="death-subtitle">
+          {myPersonalMessage ? myPersonalMessage : "Köy halkı senin bir vampir olduğunu düşündü ve seni ipe gönderdi... Artık bir hayaletsin."}
+        </p>
+        <button className="death-btn" onClick={closeDeathAnimation}>
+          RUH OLARAK İZLE 👻
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="top-bar">
@@ -87,11 +126,11 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
         {isDead && <span className="dead-chip" style={{ marginLeft: 8, background: 'var(--accent2)', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>Öldün</span>}
       </div>
 
-      {/* 🚨 KİŞİYE ÖZEL GECE BİLDİRİMİ 🚨 */}
+      {/* Kişiye Özel Gece Bildirimi */}
       {myPersonalMessage && (
         <div style={{
           padding: '12px 18px',
-          background: isDead ? 'rgba(230, 57, 70, 0.15)' : 'rgba(74, 122, 58, 0.15)',
+          background: isDead ? 'rgba(196, 64, 90, 0.15)' : 'rgba(74, 122, 58, 0.15)',
           borderBottom: isDead ? '1px solid var(--accent2)' : '1px solid #4a7a3a',
           color: isDead ? 'var(--accent2)' : '#a3e635',
           fontSize: '13px',

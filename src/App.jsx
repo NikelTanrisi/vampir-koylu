@@ -7,6 +7,7 @@ import JoinScreen from './pages/JoinScreen'
 import LobbyScreen from './pages/LobbyScreen'
 import RoleRevealScreen from './pages/RoleRevealScreen'
 import DayChatScreen from './pages/DayChatScreen'
+import MorningScene from './pages/MorningScene'
 import DayVoteDecisionScreen from './pages/DayVoteDecisionScreen'
 import DayVoteScreen from './pages/DayVoteScreen'
 import NightScreen from './pages/NightScreen'
@@ -67,7 +68,11 @@ export default function App() {
         setScreen('role_reveal')
       } else if (data.phase === 'day_chat') {
         setShowRoleReveal(false)
-        setScreen('day_chat')
+        if (data.showMorning) {
+          setScreen('morning')
+        } else {
+          setScreen('day_chat')
+        }
       } else if (data.phase === 'day_vote_decision') {
         setScreen('day_vote_decision')
       } else if (data.phase === 'day_vote') {
@@ -124,6 +129,7 @@ export default function App() {
 
   if (screen === 'splash') return <SplashScreen onNext={() => setScreen('join')} />
   if (screen === 'join') return <JoinScreen db={db} onJoin={handleJoin} onBack={() => setScreen('splash')} />
+  if (screen === 'morning') return <MorningScene db={db} roomId={roomId} playerId={playerId} isAdmin={isAdmin} gameState={gameState} />
   if (screen === 'role_reveal') return <RoleRevealScreen {...sharedProps} onDone={() => setScreen('day_chat')} />
   if (screen === 'day_chat') return <DayChatScreen {...sharedProps} />
   if (screen === 'day_vote_decision') return <DayVoteDecisionScreen {...sharedProps} />

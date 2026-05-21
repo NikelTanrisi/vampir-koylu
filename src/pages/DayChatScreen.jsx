@@ -37,16 +37,13 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
 
   const voteSleep = async () => {
     await update(ref(db, `rooms/${roomId}/sleepVotes`), { [playerId]: 'sleep' })
-    // Check if everyone alive voted
     const newVotes = { ...sleepVotes, [playerId]: 'sleep' }
     if (Object.keys(newVotes).length >= alivePlayers.length) {
-      // Everyone wants to sleep → go to night
       await goToNight()
     }
   }
 
   const voteDecision = async () => {
-    // Move to vote decision phase
     await update(ref(db, `rooms/${roomId}`), {
       phase: 'day_vote_decision',
       sleepVotes: null,
@@ -66,6 +63,41 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
   const alreadySlept = sleepVotes[playerId] === 'sleep'
   const sleepCount = Object.keys(sleepVotes).length
   const round = gameState?.round || 1
+  const lastResult = gameState?.lastNightResult || {}
+
+  // Kişisel gece özeti — sadece aktif roller için, 2. günden itibaren
+  const getNightSummary = () => {
+    if (round <= 1) return null
+
+    const prevRound = round - 1
+
+    if (myRole === 'doctor') {
+      const myTarget = gameState?.lastDoctorTarget
+      const targetName = myTarget ? (players.find(p => p.id === myTarget)?.name || '?') : null
+      if (!targetName) return null
+      if (lastResult.wasSaved) {
+        return { icon: '✅', color: '#228844', text: `Gece ${prevRound}: ${targetName} adlı kişiyi bu gece saldırıdan korudun!` }
+      } else {
+        return { icon: '🛡️', color: '#4488cc', text: `Gece ${prevRound}: ${targetName} için tetikteydin ama geceyi kimse saldırmadı.` }
+      }
+    }
+
+    if (myRole === 'vampire') {
+      const personalMsg = gameState?.personalMessages?.[playerId]
+      if (!personalMsg) return null
+      if (personalMsg.includes('başarısız') || personalMsg.includes('korundu')) {
+        return { icon: '😤', color: '#886622', text: `Gece ${prevRound}: Hedefin bu gece korunmuştu, saldırın başarısız oldu.` }
+      }
+      if (personalMsg.includes('başarılı')) {
+        const killedName = lastResult.killed ? players.find(p => p.id === lastResult.killed)?.name : null
+        return { icon: '🩸', color: '#8b2222', text: `Gece ${prevRound}: ${killedName ? killedName + ' adlı kişiyi' : 'Hedefini'} başarıyla öldürdün.` }
+      }
+    }
+
+    return null
+  }
+
+  const nightSummary = getNightSummary()
 
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -75,7 +107,7 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
         <button className="btn btn-ghost btn-sm" onClick={onLeave} style={{ width: 'auto', fontSize: 12 }}>Çık</button>
       </div>
 
-      {/* Role reminder */}
+      {/* Rol hatırlatıcı */}
       <div style={{ padding: '8px 18px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
         <span style={{ fontSize: 13, color: 'var(--text3)' }}>Rolün: </span>
         <span style={{ fontSize: 13, color: myRole === 'vampire' ? 'var(--accent2)' : myRole === 'doctor' ? '#4488cc' : '#4a7a3a' }}>
@@ -83,6 +115,26 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
         </span>
         {isDead && <span className="dead-chip" style={{ marginLeft: 8 }}>Öldün</span>}
       </div>
+
+      {/* Kişisel gece özeti */}
+      {nightSummary && (
+        <div style={{
+          margin: '10px 18px 0',
+          padding: '10px 14px',
+          background: `${nightSummary.color}18`,
+          border: `1px solid ${nightSummary.color}55`,
+          borderRadius: 10,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          fontSize: 13,
+          color: 'var(--text2)',
+          fontStyle: 'italic'
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>{nightSummary.icon}</span>
+          <span>{nightSummary.text}</span>
+        </div>
+      )}
 
       {/* Chat */}
       <div className="chat-container">
@@ -125,7 +177,7 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
         <div ref={chatEnd} />
       </div>
 
-      {/* Sleep vote bar */}
+      {/* Uyku/oylama butonu */}
       {!isDead && (
         <div style={{ padding: '10px 18px', background: 'var(--bg2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -153,7 +205,7 @@ export default function DayChatScreen({ db, roomId, playerId, playerName, isAdmi
         </div>
       )}
 
-      {/* Chat input */}
+      {/* Mesaj yazma alanı */}
       {!isDead && (
         <div className="chat-input-bar">
           <input

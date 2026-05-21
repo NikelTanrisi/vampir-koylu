@@ -149,6 +149,10 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
       ? `Gece ${room.round}: ${killedName} öldürüldü`
       : `Gece ${room.round}: Kimse ölmedi${wasSaved ? ' (doktor kurtardı)' : ''}`
 
+    // Doktorun koruduğu kişiyi bul
+    const doctorTargetEntry = Object.entries(actions).find(([k]) => k.startsWith('doctor_'))
+    const lastDoctorTarget = doctorTargetEntry ? doctorTargetEntry[1] : null
+
     await update(ref(db, `rooms/${roomId}`), {
       phase: win ? 'game_over' : 'day_chat',
       showMorning: win ? false : true,
@@ -158,6 +162,7 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
       sleepVotes: null,
       voteDecisionVotes: null,
       votes: null,
+      lastDoctorTarget: lastDoctorTarget || null,
       chatMessages: {
         system_morning: {
           id: 'system_morning',

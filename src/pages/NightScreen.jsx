@@ -12,6 +12,7 @@ export default function NightScreen({ db, roomId, playerId, gameState, myRole })
 
   const players = Object.values(gameState?.players || {}).filter(p => !p.left)
   const alivePlayers = players.filter(p => !p.dead)
+  const roles = gameState?.roles || {}
   const nightTimer = gameState?.nightTimer || (Date.now() + 10000)
   const isActive = myRole === 'vampire' || myRole === 'doctor'
   const myPlayer = players.find(p => p.id === playerId)
